@@ -1,0 +1,47 @@
+{
+  "name": "mon-app",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "appwrite": "^18.1.1",
+    "cra-template-pwa": "2.0.0",
+    "dotenv": "^16.5.0",
+    "lucide-react": "^0.511.0",
+    "node-appwrite": "^17.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.1",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^5.0.2"
+  },
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "dev": "vite",
+    "preview": "vite preview"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.0",
+    "vite": "^6.3.5"
+  }
+}
