@@ -1,142 +1,131 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { account, databases, DATABASE_ID, COLLECTIONS, ID } from '../services/appwrite';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { authService } from '../services/appwrite';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
-        throw new Error('useAuth doit être utilisé dans AuthProvider');
+        throw new Error('useAuth must be used within an AuthProvider');
     }
     return context;
 };
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
-    const [userProfile, setUserProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Vérifier la session au chargement
     useEffect(() => {
-        checkSession();
+        checkAuth();
+        
+        // Écouter les changements d'URL pour détecter le retour OAuth
+        const handleOAuthCallback = () => {
+            if (window.location.pathname === '/auth/success') {
+                handleOAuthSuccess();
+            } else if (window.location.pathname === '/auth/failure') {
+                handleOAuthFailure();
+            }
+        };
+
+        handleOAuthCallback();
+        window.addEventListener('popstate', handleOAuthCallback);
+        
+        return () => window.removeEventListener('popstate', handleOAuthCallback);
     }, []);
 
-    const checkSession = async () => {
+    const checkAuth = async () => {
         try {
-            const session = await account.get();
-            setUser(session);
-            await getUserProfile(session.$id);
+            const currentUser = await authService.getCurrentUser();
+            if (currentUser) {
+                setUser(currentUser);
+                console.log('Utilisateur connecté:', currentUser);
+            } else {
+                setUser(null);
+            }
         } catch (error) {
-            console.log('Aucune session active');
+            console.log('Utilisateur non connecté');
+            setUser(null);
         } finally {
             setLoading(false);
         }
     };
 
-    const getUserProfile = async (userId) => {
+    // ✅ Connexion avec Google OAuth
+    const loginWithGoogle = async () => {
         try {
-            const profile = await databases.getDocument(
-                DATABASE_ID,
-                COLLECTIONS.USERS,
-                userId
-            );
-            setUserProfile(profile);
-            return profile;
+            setLoading(true);
+            await authService.loginWithGoogle();
+            // La redirection se fait automatiquement
         } catch (error) {
-            console.error('Erreur lors de la récupération du profil:', error);
-            return null;
+            console.error('Erreur connexion Google:', error);
+            setLoading(false);
+            throw error;
         }
     };
 
-    const login = async (email, password) => {
+    // Gérer le succès OAuth
+    const handleOAuthSuccess = async () => {
         try {
-            const session = await account.createEmailSession(email, password);
-            setUser(session);
-            await getUserProfile(session.userId);
-            return { success: true };
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
-    };
-
-    const register = async (email, password, username, displayName) => {
-        try {
-            // Créer le compte
-            const newUser = await account.create(ID.unique(), email, password, displayName);
+            const currentUser = await authService.getCurrentUser();
+            setUser(currentUser);
+            console.log('Connexion Google réussie:', currentUser);
             
-            // Se connecter automatiquement
-            await account.createEmailSession(email, password);
-            
-            // Créer le profil utilisateur
-            const profile = await databases.createDocument(
-                DATABASE_ID,
-                COLLECTIONS.USERS,
-                newUser.$id,
-                {
-                    username,
-                    displayName,
-                    email,
-                    bio: '',
-                    profilePicture: '',
-                    isVerified: false,
-                    followersCount: 0,
-                    followingCount: 0,
-                    videosCount: 0,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                }
-            );
-
-            setUser(newUser);
-            setUserProfile(profile);
-            return { success: true };
+            // Rediriger vers la page principale
+            window.history.replaceState({}, '', '/');
         } catch (error) {
-            return { success: false, error: error.message };
+            console.error('Erreur lors de la récupération de l\'utilisateur:', error);
+            window.history.replaceState({}, '', '/auth/failure');
+        } finally {
+            setLoading(false);
         }
     };
 
+    // Gérer l'échec OAuth
+    const handleOAuthFailure = () => {
+        console.error('Échec de la connexion Google');
+        setLoading(false);
+        // Rediriger vers la page principale avec un message d'erreur
+        window.history.replaceState({}, '', '/');
+    };
+
+    // Connexion traditionnelle (optionnelle)
+    const loginWithEmail = async (email, password) => {
+        try {
+            setLoading(true);
+            const session = await authService.loginWithEmail(email, password);
+            const currentUser = await authService.getCurrentUser();
+            setUser(currentUser);
+            return { success: true, user: currentUser };
+        } catch (error) {
+            console.error('Erreur connexion email:', error);
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Déconnexion
     const logout = async () => {
         try {
-            await account.deleteSession('current');
+            await authService.logout();
             setUser(null);
-            setUserProfile(null);
+            console.log('Déconnexion réussie');
             return { success: true };
         } catch (error) {
-            return { success: false, error: error.message };
-        }
-    };
-
-    const updateProfile = async (updates) => {
-        try {
-            if (!userProfile) return { success: false, error: 'Aucun profil trouvé' };
-
-            const updatedProfile = await databases.updateDocument(
-                DATABASE_ID,
-                COLLECTIONS.USERS,
-                userProfile.$id,
-                {
-                    ...updates,
-                    updatedAt: new Date().toISOString()
-                }
-            );
-
-            setUserProfile(updatedProfile);
-            return { success: true, profile: updatedProfile };
-        } catch (error) {
-            return { success: false, error: error.message };
+            console.error('Erreur déconnexion:', error);
+            setUser(null);
+            return { success: true };
         }
     };
 
     const value = {
         user,
-        userProfile,
-        loading,
-        login,
-        register,
+        loginWithGoogle,
+        loginWithEmail,
         logout,
-        updateProfile,
-        getUserProfile,
-        checkSession
+        loading,
+        isAuthenticated: !!user,
+        checkAuth
     };
 
     return (
@@ -145,3 +134,6 @@ export const AuthProvider = ({ children }) => {
         </AuthContext.Provider>
     );
 };
+
+export default AuthContext;
+
